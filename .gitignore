@@ -13,3 +13,6 @@
 *.aab
 *.jks
 *.keystore
+# Lokal server ma'lumotlari
+server/data.json
+server/data.json.tmp

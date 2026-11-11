@@ -18,6 +18,11 @@ object PolicyRepo {
 
     private var prefs: SharedPreferences? = null
 
+    /** Qoidalar shu telefonda o'zgartirilgan va hali serverga yuborilmagan. */
+    @Volatile
+    var dirty: Boolean = false
+        private set
+
     @Synchronized
     fun init(context: Context) {
         if (prefs != null) return
@@ -32,11 +37,39 @@ object PolicyRepo {
             blacklist = p.getStringSet(KEY_BLACKLIST, emptySet()).orEmpty().toSet(),
             whitelist = p.getStringSet(KEY_WHITELIST, emptySet()).orEmpty().toSet(),
         )
+        dirty = p.getBoolean(KEY_DIRTY, false)
+    }
+
+    /** Shu telefonda (PIN ortidagi sozlamalardan) qilingan o'zgarish. */
+    @Synchronized
+    fun update(transform: (Policy) -> Policy) {
+        store(transform(_policy.value))
+        setDirty(true)
+    }
+
+    /** Ota-ona telefonidan kelgan qoidalar. */
+    @Synchronized
+    fun applyRemote(policy: Policy) {
+        store(policy)
+    }
+
+    /** Server [sent] qoidalarni qabul qildi; shu orada yana o'zgarmagan bo'lsa tozalanadi. */
+    @Synchronized
+    fun markClean(sent: Policy) {
+        if (_policy.value == sent) setDirty(false)
     }
 
     @Synchronized
-    fun update(transform: (Policy) -> Policy) {
-        val next = transform(_policy.value)
+    fun markDirty() {
+        setDirty(true)
+    }
+
+    private fun setDirty(value: Boolean) {
+        dirty = value
+        prefs?.edit()?.putBoolean(KEY_DIRTY, value)?.apply()
+    }
+
+    private fun store(next: Policy) {
         _policy.value = next
         prefs?.edit()
             ?.putBoolean(KEY_BEDTIME_ENABLED, next.bedtimeEnabled)
@@ -54,4 +87,5 @@ object PolicyRepo {
     private const val KEY_GAMBLING = "block_gambling"
     private const val KEY_BLACKLIST = "blacklist"
     private const val KEY_WHITELIST = "whitelist"
+    private const val KEY_DIRTY = "dirty"
 }

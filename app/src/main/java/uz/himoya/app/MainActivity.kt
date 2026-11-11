@@ -27,6 +27,11 @@ import uz.himoya.app.policy.TimeText
 import uz.himoya.app.ui.home.HomeScreen
 import uz.himoya.app.ui.pin.PinMode
 import uz.himoya.app.ui.pin.PinScreen
+import uz.himoya.app.sync.Role
+import uz.himoya.app.sync.SyncStore
+import uz.himoya.app.ui.parent.ParentApp
+import uz.himoya.app.ui.role.RoleScreen
+import uz.himoya.app.ui.settings.PairingCard
 import uz.himoya.app.ui.settings.SettingsScreen
 import uz.himoya.app.ui.theme.AppTheme
 import uz.himoya.app.vpn.GuardVpnService
@@ -55,11 +60,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         pinStore = PinStore(this)
         PolicyRepo.init(this)
+        SyncStore.init(this)
         setContent {
             AppTheme {
                 var pinSet by remember { mutableStateOf(pinStore.isSet()) }
                 var showSettings by remember { mutableStateOf(false) }
                 val policy by PolicyRepo.policy.collectAsStateWithLifecycle()
+                val sync by SyncStore.state.collectAsStateWithLifecycle()
 
                 when {
                     // Birinchi ochilish: ota-ona PIN o'rnatadi.
@@ -79,6 +86,16 @@ class MainActivity : ComponentActivity() {
                         onSuccess = { AppLock.unlocked = true },
                     )
 
+                    // Bu telefon kimniki ekani hali tanlanmagan.
+                    sync.role == null -> RoleScreen(
+                        onChoose = { role -> SyncStore.update { it.copy(role = role) } },
+                    )
+
+                    // Ota-ona telefoni: bu yerda VPN ishlatilmaydi.
+                    sync.role == Role.PARENT -> ParentApp(
+                        onSwitchRole = { SyncStore.update { it.copy(role = null) } },
+                    )
+
                     showSettings -> {
                         BackHandler { showSettings = false }
                         SettingsScreen(
@@ -91,6 +108,16 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             onBack = { showSettings = false },
+                            extra = {
+                                PairingCard(
+                                    onPaired = {
+                                        // Birinchi sinxronlash kutmasdan boshlansin.
+                                        if (VpnState.status.value == ProtectionStatus.ON) {
+                                            GuardVpnService.refresh(this@MainActivity)
+                                        }
+                                    },
+                                )
+                            },
                         )
                     }
 

@@ -72,8 +72,8 @@ app/src/main/java/uz/himoya/app/
   mintaqani ota-ona sozlamasiga chiqarish kerak bo'ladi.
 - **Qimor ro'yxati to'liq emas.** Bu saytlar manzilini tez-tez almashtiradi; brend nomi bo'yicha
   tekshiruv ko'pini ushlaydi, lekin hammasini emas.
-- **Rollar yo'q.** Bulut qismi bo'lmagani uchun ota-ona hammasini shu telefonda sozlaydi.
-  Parent/Child ajratish Phase 2 da paydo bo'ladi.
+- **Ota-onaga push-xabar yo'q.** Lokal serverda push yo'q: ota-ona holatni faqat ilovani ochganda
+  ko'radi. Haqiqiy backend'da FCM orqali "himoya o'chdi" xabari qo'shiladi.
 
 ## Ota-ona PIN kodi (Phase 1.1)
 
@@ -164,6 +164,47 @@ Vaqt Toshkent mintaqasi bo'yicha hisoblanadi.
 
 Chegara uch joyda tekshiriladi: har DNS so'rovida (sekundiga
 ko'pi bilan bir marta), ekran yoqilganda va daqiqada bir.
+
+## Oila sinxronizatsiyasi (Phase 2.1, vaqtinchalik lokal server)
+
+Bitta ilova, ikki rol. Rol birinchi ochilishda (PIN'dan keyin) tanlanadi:
+
+- **Farzand telefoni**: filtr shu yerda ishlaydi. Sozlamalarda "Ota-ona telefoni" bo'limi orqali
+  6 xonali kod bilan bog'lanadi.
+- **Ota-ona telefoni**: VPN ishlatilmaydi. Bolalar qurilmalari holati, oxirgi yopilgan saytlar va
+  qoidalarni masofadan o'zgartirish.
+
+**Server** — `server/server.py`, faqat Python standart kutubxonasi, ma'lumotlar `server/data.json` da.
+Bu ishlab chiqish uchun vaqtinchalik server: HTTP (shifrlashsiz), internetga ochilmasligi kerak.
+Debug yig'masidagina shifrlashsiz ulanishga ruxsat bor (`app/src/debug/AndroidManifest.xml`).
+
+| So'rov | Kim | Vazifasi |
+|---|---|---|
+| `POST /api/family` | ota-ona | Oila yaratadi, ota-ona kalitini qaytaradi |
+| `POST /api/pair-code` | ota-ona | Bola ismi bilan 6 xonali kod (10 daqiqa, bir martalik) |
+| `POST /api/pair` | bola | Kod bo'yicha qurilma kalitini oladi (daqiqasiga 10 urinish) |
+| `POST /api/device/sync` | bola | Holat va blok yozuvlarini yuboradi, qoidalarni oladi |
+| `GET /api/devices` | ota-ona | Qurilmalar holati, qoidalar, oxirgi 30 ta blok |
+| `PUT /api/devices/{id}/policy` | ota-ona | Qoidalarni o'zgartiradi |
+| `DELETE /api/devices/{id}` | ota-ona | Qurilmani ro'yxatdan o'chiradi |
+
+**Sinxronlash.** Bola telefoni himoya yoqiq paytda har 15 soniyada `sync` yuboradi (telefon
+uxlaganda to'xtaydi). Qoidalar versiya raqami bilan yuradi: ota-ona o'zgartirsa versiya oshadi va
+bola telefoni keyingi sinxronlashda yangi qoidalarni qo'llaydi. Qoidalar bola telefonining o'zida
+(PIN bilan) o'zgartirilsa, ular serverga yuboriladi. Bir vaqtda ikki tomondan o'zgartirilsa,
+oxirgi yozgan yutadi.
+
+**Holat.** Himoya o'chirilganda bola telefoni oxirgi marta "himoya o'chiq" deb xabar beradi.
+50 soniyadan ko'p xabar kelmasa, ota-ona ekranida "Ko'rinmayapti" chiqadi.
+
+**Serverga nima yuboriladi.** Himoya holati, hisoblagichlar, ilova versiyasi, qoidalar va blok
+yozuvlari (faqat domen, sabab, vaqt). Ochilgan (bloklanmagan) saytlar, sahifa manzillari, qidiruv
+so'zlari va sahifa mazmuni yuborilmaydi.
+
+**PIN** har bir telefonda alohida va serverga yuborilmaydi.
+
+Keyingi qadam (Phase 2.2): bola "Ruxsat so'rash" yuboradi, ota-ona 15 daqiqa / 1 soat / bugun
+ruxsat beradi yoki rad etadi.
 
 ## Ochiq savollar
 

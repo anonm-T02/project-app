@@ -82,4 +82,45 @@
 
     <string name="settings_time_network">Hozir Toshkent vaqti bilan %1$s · internetdan olingan</string>
     <string name="settings_time_device">Hozir %1$s · telefon soati boʻyicha. Himoya yoqilganda vaqt internetdan olinadi.</string>
+
+    <string name="action_save">Saqlash</string>
+    <string name="action_done">Tayyor</string>
+    <string name="error_server">Serverga ulanib boʻlmadi</string>
+    <string name="error_server_hint">Kompyuterda server ishlab turganini va pastdagi server manzilini tekshiring.</string>
+    <string name="server_url_label">Server: %1$s</string>
+
+    <string name="role_title">Bu telefon kimniki?</string>
+    <string name="role_subtitle">Bir marta tanlanadi. Keyin ota-ona telefonidan farzand telefonini boshqarasiz.</string>
+    <string name="role_child">Bu farzand telefoni</string>
+    <string name="role_parent">Men ota-onaman</string>
+
+    <string name="pair_title">Ota-ona telefoni</string>
+    <string name="pair_hint">Ota-ona telefonidagi “Bola qoʻshish” boʻlimida chiqqan 6 xonali kodni kiriting.</string>
+    <string name="pair_code_placeholder">6 xonali kod</string>
+    <string name="pair_action">Bogʻlash</string>
+    <string name="pair_connected">Bogʻlangan: %1$s. Qoidalarni ota-ona telefonidan ham oʻzgartirish mumkin.</string>
+    <string name="pair_disconnect">Bogʻlanishni uzish</string>
+
+    <string name="parent_title">Oilam</string>
+    <string name="parent_summary_empty">Hali bola qoʻshilmagan.</string>
+    <string name="parent_summary_ok">Barcha qurilmalar himoyalangan</string>
+    <string name="parent_summary_risk">%1$d ta qurilmada himoya yoʻq</string>
+    <string name="parent_status_off">Himoya oʻchiq</string>
+    <string name="parent_status_silent">Koʻrinmayapti · %1$d daqiqadan beri</string>
+    <string name="parent_status_bedtime">Himoya faol · uyqu vaqti</string>
+    <string name="parent_blocked_count">Bugungi seansda yopilgan soʻrovlar: %1$d</string>
+    <string name="parent_add_child">Bola qoʻshish</string>
+    <string name="parent_switch_role">Bu telefon rolini oʻzgartirish</string>
+    <string name="parent_child_name">Farzandingiz ismi</string>
+    <string name="parent_child_name_placeholder">masalan: Aziz</string>
+    <string name="parent_get_code">Kod olish</string>
+    <string name="parent_code_title">%1$s telefoni uchun kod</string>
+    <string name="parent_code_hint">Farzand telefonida ilovani oching: Sozlamalar → “Ota-ona telefoni” boʻlimiga shu kodni kiriting. Kod 10 daqiqa amal qiladi va bir marta ishlaydi.</string>
+    <string name="parent_rules">Qoidalar</string>
+    <string name="parent_rules_title">%1$s: qoidalar</string>
+    <string name="parent_recent_blocks">Oxirgi yopilgan saytlar</string>
+    <string name="parent_no_blocks">Hozircha yopilgan sayt yoʻq.</string>
+    <string name="parent_always_on_missing">“Doim yoqiq VPN” yoqilmagan: telefon qayta yoqilganda himoya oʻzi ishga tushmaydi.</string>
+    <string name="parent_remove">Qurilmani roʻyxatdan oʻchirish</string>
+    <string name="parent_remove_confirm">Tasdiqlash uchun yana bosing</string>
 </resources>

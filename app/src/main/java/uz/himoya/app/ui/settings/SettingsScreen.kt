@@ -60,6 +60,11 @@ fun SettingsScreen(
     policy: Policy,
     onChange: ((Policy) -> Policy) -> Unit,
     onBack: () -> Unit,
+    title: String? = null,
+    /** Bola telefonida ko'rsatiladi: qoidalar qaysi vaqt bo'yicha ishlayotgani. */
+    showClock: Boolean = true,
+    /** Ro'yxat oxirida qo'shimcha karta (masalan, ota-ona telefoniga bog'lash). */
+    extra: (@Composable () -> Unit)? = null,
 ) {
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
@@ -76,7 +81,7 @@ fun SettingsScreen(
                 }
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = stringResource(R.string.settings_title),
+                    text = title ?: stringResource(R.string.settings_title),
                     style = MaterialTheme.typography.titleLarge,
                 )
             }
@@ -89,8 +94,10 @@ fun SettingsScreen(
                     checked = policy.bedtimeEnabled,
                     onCheckedChange = { on -> onChange { it.copy(bedtimeEnabled = on) } },
                 )
-                Spacer(Modifier.height(10.dp))
-                CurrentTime()
+                if (showClock) {
+                    Spacer(Modifier.height(10.dp))
+                    CurrentTime()
+                }
                 if (policy.bedtimeEnabled) {
                     Spacer(Modifier.height(12.dp))
                     TimeStepper(
@@ -146,6 +153,9 @@ fun SettingsScreen(
                     onRemove = { domain -> onChange { it.copy(whitelist = it.whitelist - domain) } },
                 )
             }
+            if (extra != null) {
+                extra()
+            }
             Spacer(Modifier.height(8.dp))
         }
     }
@@ -174,7 +184,7 @@ private fun CurrentTime() {
 }
 
 @Composable
-private fun Card(content: @Composable () -> Unit) {
+fun Card(content: @Composable () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()

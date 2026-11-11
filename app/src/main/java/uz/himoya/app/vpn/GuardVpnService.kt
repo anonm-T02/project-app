@@ -25,6 +25,9 @@ import uz.himoya.app.R
 import uz.himoya.app.notify.BlockNotifier
 import uz.himoya.app.policy.PolicyRepo
 import uz.himoya.app.policy.TimeText
+import uz.himoya.app.sync.BlockLog
+import uz.himoya.app.sync.ChildSync
+import uz.himoya.app.sync.SyncStore
 import java.util.concurrent.Executors
 
 /**
@@ -46,6 +49,17 @@ class GuardVpnService : VpnService() {
 
     /** Internet vaqtini olish uchun alohida oqim (tarmoq so'rovi). */
     private val clockExecutor = Executors.newSingleThreadExecutor()
+
+    /** Ota-ona serveri bilan almashinuv uchun alohida oqim. */
+    private val syncExecutor = Executors.newSingleThreadExecutor()
+
+    /** Juftlangan bo'lsa holatni yuborib, qoidalarni olib turadi. Telefon uxlaganda to'xtaydi. */
+    private val familySyncTick = object : Runnable {
+        override fun run() {
+            syncWithFamily()
+            handler.postDelayed(this, FAMILY_SYNC_MS)
+        }
+    }
     private lateinit var notifier: BlockNotifier
 
     /** Ekran yoniq paytda uyqu vaqti chegarasini daqiqada bir tekshiradi. */
@@ -67,6 +81,7 @@ class GuardVpnService : VpnService() {
     override fun onCreate() {
         super.onCreate()
         PolicyRepo.init(this)
+        SyncStore.init(this)
         notifier = BlockNotifier(this)
     }
 
@@ -85,6 +100,7 @@ class GuardVpnService : VpnService() {
             syncClockIfNeeded()
             syncMode()
             publishSystemSettings()
+            syncWithFamily()
             return START_STICKY
         }
         startProtection()
@@ -100,6 +116,7 @@ class GuardVpnService : VpnService() {
     override fun onDestroy() {
         stopProtection()
         clockExecutor.shutdownNow()
+        syncExecutor.shutdownNow()
         super.onDestroy()
     }
 
@@ -133,10 +150,32 @@ class GuardVpnService : VpnService() {
         }
         handler.removeCallbacks(tick)
         handler.postDelayed(tick, TICK_MS)
+        handler.removeCallbacks(familySyncTick)
+        handler.post(familySyncTick)
+    }
+
+    private fun syncWithFamily() {
+        if (tun == null || SyncStore.current.deviceToken == null) return
+        val appContext = applicationContext
+        runCatching {
+            syncExecutor.execute {
+                if (ChildSync.syncOnce(appContext, protectionOn = true) == ChildSync.Outcome.POLICY_CHANGED) {
+                    // Ota-ona qoidalarni o'zgartirgan: uyqu vaqti darhol qayta tekshiriladi.
+                    handler.post { syncMode() }
+                }
+            }
+        }
     }
 
     private fun stopProtection() {
+        val wasRunning = tun != null
         handler.removeCallbacks(tick)
+        handler.removeCallbacks(familySyncTick)
+        if (wasRunning && SyncStore.current.deviceToken != null) {
+            // Ota-ona "himoya o'chdi" holatini ko'rishi uchun oxirgi xabar.
+            val appContext = applicationContext
+            Thread({ ChildSync.syncOnce(appContext, protectionOn = false) }, "family-final-sync").start()
+        }
         if (receiverRegistered) {
             runCatching { unregisterReceiver(screenOnReceiver) }
             receiverRegistered = false
@@ -200,7 +239,10 @@ class GuardVpnService : VpnService() {
             tun = pfd,
             bedtimeMode = wantBedtime,
             protect = { socket -> protect(socket) },
-            onSiteBlocked = { domain, reason -> notifier.onBlocked(domain, reason) },
+            onSiteBlocked = { domain, reason ->
+                notifier.onBlocked(domain, reason)
+                BlockLog.add(domain, reason)
+            },
             onModeMismatch = { handler.post { syncMode() } },
         ).also { it.start() }
         oldForwarder?.stop()
@@ -236,6 +278,9 @@ class GuardVpnService : VpnService() {
             builder.allowFamily(OsConstants.AF_INET)
             builder.allowFamily(OsConstants.AF_INET6)
         }
+        // O'z ilovamiz trafigi VPN'dan tashqarida yuradi: uyqu vaqtida ham ota-ona serveri
+        // bilan aloqa uzilmaydi.
+        runCatching { builder.addDisallowedApplication(packageName) }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             builder.setMetered(false)
         }
@@ -317,6 +362,7 @@ class GuardVpnService : VpnService() {
         private const val NOTIFICATION_ID = 1
         private const val REQUEST_BEDTIME = 1
         private const val TICK_MS = 60_000L
+        private const val FAMILY_SYNC_MS = 15_000L
 
         private const val TUN_ADDRESS = "10.111.222.1"
         private const val TUN_ADDRESS_V6 = "fd00:6f69:6c61::1"
