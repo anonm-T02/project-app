@@ -43,9 +43,43 @@
 
     <string name="block_channel_name">Yopilgan sahifalar</string>
     <string name="block_notif_title">Sahifa yopildi</string>
-    <string name="block_notif_text">%1$s — yoshga mos emas yoki xavfli</string>
+    <string name="block_notif_text">%1$s — %2$s</string>
     <string name="block_title">Bu sahifa hozircha yopiq</string>
     <string name="block_reason">Yoshga mos emas yoki xavfli sayt</string>
     <string name="block_hint">Bu jazo emas, himoya. Sahifa xato yopilgan deb oʻylasangiz, ota-onangizga ayting.</string>
     <string name="block_action_ok">Tushunarli</string>
+
+    <string name="block_reason_adult_short">yoshga mos emas yoki xavfli</string>
+    <string name="block_reason_gambling_short">qimor va tikish sayti</string>
+    <string name="block_reason_family_short">ota-ona yopgan sayt</string>
+    <string name="block_reason_gambling">Qimor va tikish saytlari yopiq</string>
+    <string name="block_reason_family">Ota-onangiz bu saytni yopgan</string>
+
+    <string name="bedtime_title">Hozir uyqu vaqti</string>
+    <string name="bedtime_notif_title">Uyqu vaqti: internet yopiq</string>
+    <string name="bedtime_opens_at">Internet soat %1$s da ochiladi</string>
+    <string name="bedtime_closed_until">Internet soat %1$s gacha yopiq</string>
+    <string name="bedtime_hint">Telefonni qoʻyib, yaxshi dam oling. Qoʻngʻiroqlar ishlayveradi.</string>
+
+    <string name="action_back">← Orqaga</string>
+    <string name="action_add">Qoʻshish</string>
+    <string name="action_remove">Oʻchirish</string>
+
+    <string name="settings_title">Sozlamalar</string>
+    <string name="settings_bedtime">Uyqu vaqti</string>
+    <string name="settings_bedtime_desc">Shu vaqt oraligʻida internet butunlay yopiladi.</string>
+    <string name="settings_bedtime_start">Boshlanishi</string>
+    <string name="settings_bedtime_end">Tugashi</string>
+    <string name="settings_gambling">Qimor saytlarini yopish</string>
+    <string name="settings_gambling_desc">Tikish idoralari, kazino va slot saytlari.</string>
+    <string name="settings_blacklist">Yopilgan saytlar</string>
+    <string name="settings_blacklist_desc">Bu saytlar va ularning barcha boʻlimlari ochilmaydi.</string>
+    <string name="settings_whitelist">Ruxsat berilgan saytlar</string>
+    <string name="settings_whitelist_desc">Filtr xato yopgan saytni shu yerga qoʻshsangiz, ochiladi.</string>
+    <string name="settings_domain_placeholder">masalan: tiktok.com</string>
+    <string name="settings_domain_invalid">Sayt manzili notoʻgʻri. Masalan: example.com</string>
+    <string name="settings_list_empty">Roʻyxat boʻsh.</string>
+
+    <string name="settings_time_network">Hozir Toshkent vaqti bilan %1$s · internetdan olingan</string>
+    <string name="settings_time_device">Hozir %1$s · telefon soati boʻyicha. Himoya yoqilganda vaqt internetdan olinadi.</string>
 </resources>

@@ -28,8 +28,9 @@ qimor, fishing va zararli saytlardan himoya qilishga yordam beradi.
 | Phase 0 | Skelet, VPN yoqish/o'chirish, oilaviy DNS orqali filtr | tayyor |
 | Phase 1.1 | Ota-ona PIN kodi, "Doim yoqiq VPN" ko'rsatmasi | tayyor |
 | Phase 1.2 | DoH bloklash, ochiq DNS manzillari, Private DNS tekshiruvi, xavfsiz qidiruv | tayyor |
-| Phase 1.3 | Blok bildirishnomasi va blok ekrani | sinovda |
-| Phase 1.4 | Oila ro'yxatlari, qimor ro'yxati, uyqu vaqti, o'chirishdan himoya | navbatda |
+| Phase 1.3 | Blok bildirishnomasi va blok ekrani | tayyor |
+| Phase 1.4 | Sozlamalar: oila ro'yxatlari, qimor filtri, uyqu vaqti | sinovda |
+| Phase 1.5 | Ilovani o'chirib tashlashdan himoya | navbatda |
 | Phase 2 | Oila sinxronizatsiyasi (ota-ona telefoni, so'rovlar) | keyin |
 | Phase 3 | Ilovalarni bloklash, kunlik limit | keyin |
 | Phase 4 | Play'ga chiqarish | keyin |

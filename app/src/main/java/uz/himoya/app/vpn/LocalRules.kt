@@ -1,28 +1,63 @@
 package uz.himoya.app.vpn
 
+import uz.himoya.app.policy.DomainText
+import uz.himoya.app.policy.GamblingList
+import uz.himoya.app.policy.Policy
+
+/** Sayt nima sababdan yopilgani. Blok ekranidagi matn shunga qarab tanlanadi. */
+enum class BlockReason {
+    /** Filtrni chetlab o'tadigan shifrlangan DNS xizmati. Bola uchun xabar chiqarilmaydi. */
+    ENCRYPTED_DNS,
+
+    /** Ota-ona o'zi yopgan sayt. */
+    FAMILY_LIST,
+
+    /** Qimor va tikish. */
+    GAMBLING,
+
+    /** Oilaviy DNS yopgan: kattalar kontenti yoki zararli sayt. */
+    ADULT_OR_HARMFUL,
+
+    /** Uyqu vaqti: butun internet yopiq. */
+    BEDTIME,
+}
+
 sealed interface DnsDecision {
     /** Oilaviy DNS'ga o'zgarishsiz yuboriladi. */
     data object Forward : DnsDecision
 
+    /** Ota-ona ruxsat bergan sayt: filtrsiz serverdan so'raladi. */
+    data object ForwardUnfiltered : DnsDecision
+
     /** Lokal bloklanadi ("bunday domen yo'q" javobi). */
-    data object Block : DnsDecision
+    data class Block(val reason: BlockReason) : DnsDecision
 
     /** Boshqa nomning manzili qaytariladi (xavfsiz qidiruv). */
     data class Remap(val target: String) : DnsDecision
 }
 
 /**
- * Oilaviy DNS'dan oldin ishlaydigan lokal qoidalar:
- * 1) filtrni chetlab o'tadigan shifrlangan DNS (DoH/DoT) xizmatlari bloklanadi;
- * 2) qidiruv tizimlari xavfsiz qidiruv manziliga yo'naltiriladi.
+ * Oilaviy DNS'dan oldin ishlaydigan lokal qoidalar. Tartib muhim:
+ * 1) filtrni chetlab o'tadigan shifrlangan DNS (DoH/DoT) xizmatlari bloklanadi
+ *    (ruxsat ro'yxati ham buni bekor qila olmaydi);
+ * 2) qidiruv tizimlari xavfsiz qidiruv manziliga yo'naltiriladi;
+ * 3) ota-ona ruxsat bergan saytlar ochiladi;
+ * 4) ota-ona yopgan saytlar bloklanadi;
+ * 5) qimor saytlari bloklanadi (yoqilgan bo'lsa);
+ * 6) qolgani oilaviy DNS'ga yuboriladi.
  */
 object LocalRules {
 
-    fun decide(rawName: String?): DnsDecision {
+    fun decide(rawName: String?, policy: Policy = Policy()): DnsDecision {
         if (rawName.isNullOrEmpty()) return DnsDecision.Forward
         val name = rawName.lowercase().trimEnd('.')
-        if (isEncryptedDnsHost(name)) return DnsDecision.Block
+        if (isEncryptedDnsHost(name)) return DnsDecision.Block(BlockReason.ENCRYPTED_DNS)
         safeSearchTarget(name)?.let { return DnsDecision.Remap(it) }
+        if (DomainText.inList(name, policy.whitelist)) return DnsDecision.ForwardUnfiltered
+        if (DomainText.inList(name, policy.blacklist)) return DnsDecision.Block(BlockReason.FAMILY_LIST)
+        if (policy.blockGambling && GamblingList.matches(name)) {
+            return DnsDecision.Block(BlockReason.GAMBLING)
+        }
         return DnsDecision.Forward
     }
 

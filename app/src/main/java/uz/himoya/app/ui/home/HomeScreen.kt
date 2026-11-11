@@ -12,6 +12,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -61,14 +62,19 @@ fun HomeScreen(
     blockedRequests: Long,
     systemSettings: SystemVpnSettings,
     privateDnsProvider: String?,
+    bedtimeActive: Boolean,
+    bedtimeEnd: String,
     onTurnOn: () -> Unit,
     onTurnOff: () -> Unit,
+    onOpenSettings: () -> Unit,
     onOpenVpnSettings: () -> Unit,
     onOpenNetworkSettings: () -> Unit,
 ) {
+    // Himoya yoqiq va hozir uyqu vaqti: internet butunlay yopiq.
+    val bedtimeNow = status == ProtectionStatus.ON && bedtimeActive
     val orbColor by animateColorAsState(
         targetValue = when (status) {
-            ProtectionStatus.ON -> AppColors.Safe
+            ProtectionStatus.ON -> if (bedtimeNow) AppColors.Accent else AppColors.Safe
             ProtectionStatus.STARTING -> AppColors.Accent
             ProtectionStatus.OFF -> AppColors.Warn
         },
@@ -103,11 +109,19 @@ fun HomeScreen(
                 .padding(horizontal = 20.dp, vertical = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(
-                text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.titleLarge,
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-            )
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.app_name),
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = onOpenSettings) {
+                    Text(stringResource(R.string.settings_title), color = AppColors.Accent)
+                }
+            }
 
             // O'rta qism kichik ekranlarda aylantiriladi, tugma doim pastda ko'rinib turadi.
             Column(
@@ -128,13 +142,17 @@ fun HomeScreen(
                 )
                 Spacer(Modifier.height(28.dp))
                 Text(
-                    text = stringResource(title),
+                    text = stringResource(if (bedtimeNow) R.string.bedtime_title else title),
                     style = MaterialTheme.typography.headlineLarge,
                     textAlign = TextAlign.Center,
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = stringResource(subtitle),
+                    text = if (bedtimeNow) {
+                        stringResource(R.string.bedtime_closed_until, bedtimeEnd)
+                    } else {
+                        stringResource(subtitle)
+                    },
                     style = MaterialTheme.typography.bodyLarge,
                     color = AppColors.TextMuted,
                     textAlign = TextAlign.Center,
@@ -303,7 +321,7 @@ private fun StatusOrb(isOn: Boolean, color: Color, modifier: Modifier = Modifier
 @Composable
 private fun HomeScreenOnPreview() {
     AppTheme {
-        HomeScreen(ProtectionStatus.ON, 128, 4, SystemVpnSettings(alwaysOn = false), null, {}, {}, {}, {})
+        HomeScreen(ProtectionStatus.ON, 128, 4, SystemVpnSettings(alwaysOn = false), null, false, "07:00", {}, {}, {}, {}, {})
     }
 }
 
@@ -311,6 +329,6 @@ private fun HomeScreenOnPreview() {
 @Composable
 private fun HomeScreenOffPreview() {
     AppTheme {
-        HomeScreen(ProtectionStatus.OFF, 0, 0, SystemVpnSettings(), "dns.example.com", {}, {}, {}, {})
+        HomeScreen(ProtectionStatus.OFF, 0, 0, SystemVpnSettings(), "dns.example.com", false, "07:00", {}, {}, {}, {}, {})
     }
 }

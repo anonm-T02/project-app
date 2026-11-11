@@ -28,6 +28,13 @@ object VpnState {
         _systemSettings.value = value
     }
 
+    private val _bedtimeActive = MutableStateFlow(false)
+    val bedtimeActive: StateFlow<Boolean> = _bedtimeActive.asStateFlow()
+
+    fun setBedtimeActive(value: Boolean) {
+        _bedtimeActive.value = value
+    }
+
     fun setStatus(value: ProtectionStatus) {
         _status.value = value
     }

@@ -68,6 +68,10 @@ app/src/main/java/uz/himoya/app/
 - **IPv6 orqali to'g'ridan-to'g'ri DNS** (masalan 2001:4860:4860::8888) hali tunnelga olinmagan.
 - **TCP orqali DNS** qayta ishlanmaydi (juda kam uchraydi).
 - **Telefon qayta yoqilganda** himoya o'zi yoqilmaydi. Phase 1 da.
+- **Vaqt mintaqasi qat'iy: Toshkent (UTC+5).** Boshqa mamlakatdagi foydalanuvchilar uchun
+  mintaqani ota-ona sozlamasiga chiqarish kerak bo'ladi.
+- **Qimor ro'yxati to'liq emas.** Bu saytlar manzilini tez-tez almashtiradi; brend nomi bo'yicha
+  tekshiruv ko'pini ushlaydi, lekin hammasini emas.
 - **Rollar yo'q.** Bulut qismi bo'lmagani uchun ota-ona hammasini shu telefonda sozlaydi.
   Parent/Child ajratish Phase 2 da paydo bo'ladi.
 
@@ -128,6 +132,38 @@ Har bir DNS so'rovi oilaviy DNS'ga yuborilishidan oldin `LocalRules` orqali o'ta
   ularni fon ilovalari ham so'raydi va bola uchun ma'nosi yo'q.
 - Blok ekrani PIN so'ramaydi va undan hech narsani o'zgartirib bo'lmaydi.
 - "Ruxsat so'rash" tugmasi Phase 2 da (server kerak).
+
+## Oila qoidalari (Phase 1.4)
+
+Qoidalar `Policy` da saqlanadi (qurilmada, `SharedPreferences`), "Sozlamalar" ekranidan boshqariladi.
+Ekran PIN ortida.
+
+**Qaror tartibi** (har bir DNS so'rovi uchun, `LocalRules.decide`):
+
+1. Shifrlangan DNS xizmati → blok (ruxsat ro'yxati ham bekor qila olmaydi)
+2. Qidiruv tizimi → xavfsiz qidiruv manzili
+3. Ruxsat berilgan saytlar ro'yxatida → filtrsiz DNS (1.1.1.1) orqali ochiladi
+4. Yopilgan saytlar ro'yxatida → blok
+5. Qimor (yoqilgan bo'lsa): aniq ro'yxat yoki brend so'zi → blok
+6. Qolgani → oilaviy DNS (1.1.1.3)
+
+Ro'yxatdagi domen o'zining barcha quyi domenlarini ham qamraydi (`tiktok.com` → `www.tiktok.com`).
+
+**Uyqu vaqti.** Boshlanish va tugash vaqti 30 daqiqalik qadam bilan belgilanadi, yarim tundan
+o'tishi mumkin. Uyqu vaqtida tunnel boshqa rejimda qayta quriladi: butun IPv4/IPv6 trafik tunnelga
+yo'naltiriladi va tashlab yuboriladi (o'qilmaydi), DNS so'rovlari "topilmadi" javobini oladi.
+Qo'ng'iroq va SMS ishlayveradi.
+
+**Vaqt manbai.** Uyqu vaqti telefon soatiga emas, internet vaqtiga tayanadi (`TrustedClock`).
+Himoya yoqilganda vaqt serveridan (Google Public NTP, Cloudflare Time; SNTP, UDP 123) vaqt olinadi
+va telefon yoqilgandan beri o'tgan vaqt hisoblagichiga (`elapsedRealtime`) bog'lanadi. Bu
+hisoblagichni foydalanuvchi o'zgartira olmaydi, shuning uchun sozlamalarda soatni surish yordam
+bermaydi. Vaqt har 6 soatda yangilanadi. Vaqt hali olinmagan bo'lsa (telefon endi yoqilgan va
+tarmoq yo'q) vaqtincha telefon soati ishlatiladi; internet paydo bo'lishi bilan to'g'rilanadi.
+Vaqt Toshkent mintaqasi bo'yicha hisoblanadi.
+
+Chegara uch joyda tekshiriladi: har DNS so'rovida (sekundiga
+ko'pi bilan bir marta), ekran yoqilganda va daqiqada bir.
 
 ## Ochiq savollar
 

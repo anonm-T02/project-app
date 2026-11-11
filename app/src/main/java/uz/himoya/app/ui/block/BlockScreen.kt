@@ -43,10 +43,20 @@ import androidx.compose.ui.unit.dp
 import uz.himoya.app.R
 import uz.himoya.app.ui.theme.AppColors
 import uz.himoya.app.ui.theme.AppTheme
+import uz.himoya.app.vpn.BlockReason
 
 /** Tinch ohangdagi blok ekrani: qo'rqitmaydi, nima bo'lganini tushuntiradi. */
 @Composable
-fun BlockScreen(domain: String, onClose: () -> Unit) {
+fun BlockScreen(reason: BlockReason, domain: String, detail: String, onClose: () -> Unit) {
+    val isBedtime = reason == BlockReason.BEDTIME
+    val titleText = stringResource(if (isBedtime) R.string.bedtime_title else R.string.block_title)
+    val reasonText = when (reason) {
+        BlockReason.BEDTIME -> stringResource(R.string.bedtime_opens_at, detail)
+        BlockReason.GAMBLING -> stringResource(R.string.block_reason_gambling)
+        BlockReason.FAMILY_LIST -> stringResource(R.string.block_reason_family)
+        else -> stringResource(R.string.block_reason)
+    }
+    val hintText = stringResource(if (isBedtime) R.string.bedtime_hint else R.string.block_hint)
     val breathing = rememberInfiniteTransition(label = "breathing")
     val scale by breathing.animateFloat(
         initialValue = 0.96f,
@@ -88,18 +98,18 @@ fun BlockScreen(domain: String, onClose: () -> Unit) {
             }
             Spacer(Modifier.height(28.dp))
             Text(
-                text = stringResource(R.string.block_title),
+                text = titleText,
                 style = MaterialTheme.typography.headlineLarge,
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                text = stringResource(R.string.block_reason),
+                text = reasonText,
                 style = MaterialTheme.typography.bodyLarge,
                 color = AppColors.TextMuted,
                 textAlign = TextAlign.Center,
             )
-            if (domain.isNotEmpty()) {
+            if (!isBedtime && domain.isNotEmpty()) {
                 Spacer(Modifier.height(20.dp))
                 Text(
                     text = domain,
@@ -117,7 +127,7 @@ fun BlockScreen(domain: String, onClose: () -> Unit) {
             Spacer(Modifier.weight(1f))
 
             Text(
-                text = stringResource(R.string.block_hint),
+                text = hintText,
                 style = MaterialTheme.typography.bodyMedium,
                 color = AppColors.TextMuted,
                 textAlign = TextAlign.Center,
@@ -165,6 +175,6 @@ private fun LockIcon(modifier: Modifier = Modifier) {
 @Composable
 private fun BlockScreenPreview() {
     AppTheme {
-        BlockScreen(domain = "example.com", onClose = {})
+        BlockScreen(BlockReason.ADULT_OR_HARMFUL, "example.com", "", onClose = {})
     }
 }

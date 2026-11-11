@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -21,9 +22,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import uz.himoya.app.guard.AppLock
 import uz.himoya.app.guard.PinStore
 import uz.himoya.app.guard.PrivateDnsCheck
+import uz.himoya.app.policy.PolicyRepo
+import uz.himoya.app.policy.TimeText
 import uz.himoya.app.ui.home.HomeScreen
 import uz.himoya.app.ui.pin.PinMode
 import uz.himoya.app.ui.pin.PinScreen
+import uz.himoya.app.ui.settings.SettingsScreen
 import uz.himoya.app.ui.theme.AppTheme
 import uz.himoya.app.vpn.GuardVpnService
 import uz.himoya.app.vpn.ProtectionStatus
@@ -50,9 +54,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         pinStore = PinStore(this)
+        PolicyRepo.init(this)
         setContent {
             AppTheme {
                 var pinSet by remember { mutableStateOf(pinStore.isSet()) }
+                var showSettings by remember { mutableStateOf(false) }
+                val policy by PolicyRepo.policy.collectAsStateWithLifecycle()
 
                 when {
                     // Birinchi ochilish: ota-ona PIN o'rnatadi.
@@ -72,7 +79,23 @@ class MainActivity : ComponentActivity() {
                         onSuccess = { AppLock.unlocked = true },
                     )
 
+                    showSettings -> {
+                        BackHandler { showSettings = false }
+                        SettingsScreen(
+                            policy = policy,
+                            onChange = { transform ->
+                                PolicyRepo.update(transform)
+                                // Uyqu vaqti o'zgargan bo'lsa xizmat darhol moslashsin.
+                                if (VpnState.status.value == ProtectionStatus.ON) {
+                                    GuardVpnService.refresh(this@MainActivity)
+                                }
+                            },
+                            onBack = { showSettings = false },
+                        )
+                    }
+
                     else -> {
+                        val bedtimeActive by VpnState.bedtimeActive.collectAsStateWithLifecycle()
                         val status by VpnState.status.collectAsStateWithLifecycle()
                         val checked by VpnState.checkedRequests.collectAsStateWithLifecycle()
                         val blocked by VpnState.blockedRequests.collectAsStateWithLifecycle()
@@ -83,8 +106,11 @@ class MainActivity : ComponentActivity() {
                             blockedRequests = blocked,
                             systemSettings = system,
                             privateDnsProvider = privateDnsProvider,
+                            bedtimeActive = bedtimeActive,
+                            bedtimeEnd = TimeText.format(policy.bedtimeEnd),
                             onTurnOn = { turnOn() },
                             onTurnOff = { GuardVpnService.stop(this@MainActivity) },
+                            onOpenSettings = { showSettings = true },
                             onOpenVpnSettings = { openSettings(Settings.ACTION_VPN_SETTINGS) },
                             onOpenNetworkSettings = { openSettings(Settings.ACTION_WIRELESS_SETTINGS) },
                         )

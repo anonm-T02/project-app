@@ -4,31 +4,71 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.net.VpnService
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.system.OsConstants
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import uz.himoya.app.BlockActivity
 import uz.himoya.app.MainActivity
 import uz.himoya.app.R
 import uz.himoya.app.notify.BlockNotifier
+import uz.himoya.app.policy.PolicyRepo
+import uz.himoya.app.policy.TimeText
+import java.util.concurrent.Executors
 
 /**
- * Lokal, faqat DNS uchun VPN.
+ * Lokal VPN. Ikki rejimi bor:
  *
- * Tunnelga faqat bitta virtual DNS manzili yo'naltiriladi. Qolgan barcha trafik
- * (sahifalar, video, xabarlar) odatdagi tarmoqdan o'tadi va bu ilovaga ko'rinmaydi.
+ * - Oddiy rejim (DNS-only): tunnelga faqat DNS manzillari yo'naltiriladi. Qolgan trafik
+ *   (sahifalar, video, xabarlar) odatdagi tarmoqdan o'tadi va bu ilovaga ko'rinmaydi.
+ * - Uyqu rejimi: butun trafik tunnelga yo'naltiriladi va tashlab yuboriladi, ya'ni internet
+ *   yopiladi. Paketlar o'qilmaydi va saqlanmaydi.
  */
 class GuardVpnService : VpnService() {
 
     private var tun: ParcelFileDescriptor? = null
     private var forwarder: DnsForwarder? = null
+    private var bedtimeMode = false
+    private var receiverRegistered = false
+
+    private val handler = Handler(Looper.getMainLooper())
+
+    /** Internet vaqtini olish uchun alohida oqim (tarmoq so'rovi). */
+    private val clockExecutor = Executors.newSingleThreadExecutor()
+    private lateinit var notifier: BlockNotifier
+
+    /** Ekran yoniq paytda uyqu vaqti chegarasini daqiqada bir tekshiradi. */
+    private val tick = object : Runnable {
+        override fun run() {
+            syncClockIfNeeded()
+            syncMode()
+            handler.postDelayed(this, TICK_MS)
+        }
+    }
+
+    private val screenOnReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            syncClockIfNeeded()
+            syncMode()
+        }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        PolicyRepo.init(this)
+        notifier = BlockNotifier(this)
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
@@ -37,11 +77,13 @@ class GuardVpnService : VpnService() {
             return START_NOT_STICKY
         }
         if (intent?.action == ACTION_REFRESH) {
-            // Ekran qayta ochilganda tizim sozlamalarini yangilash uchun.
+            // Ekran qayta ochilganda yoki qoidalar o'zgarganda.
             if (tun == null) {
                 stopSelf()
                 return START_NOT_STICKY
             }
+            syncClockIfNeeded()
+            syncMode()
             publishSystemSettings()
             return START_STICKY
         }
@@ -57,6 +99,7 @@ class GuardVpnService : VpnService() {
 
     override fun onDestroy() {
         stopProtection()
+        clockExecutor.shutdownNow()
         super.onDestroy()
     }
 
@@ -69,27 +112,134 @@ class GuardVpnService : VpnService() {
         if (tun != null) return
 
         VpnState.setStatus(ProtectionStatus.STARTING)
-        val pfd = try {
-            buildTunnel()
-        } catch (e: Exception) {
-            Log.e(TAG, "Tunnelni ochib bo'lmadi", e)
-            null
-        }
-        if (pfd == null) {
+        if (!applyTunnel()) {
             // Ruxsat berilmagan yoki tizim rad etgan.
             stopProtection()
             stopSelf()
             return
         }
-        tun = pfd
-        val notifier = BlockNotifier(this)
-        forwarder = DnsForwarder(
-            tun = pfd,
-            protect = { socket -> protect(socket) },
-            onSiteBlocked = { domain -> notifier.onBlocked(domain) },
-        ).also { it.start() }
         VpnState.setStatus(ProtectionStatus.ON)
         publishSystemSettings()
+        syncClockIfNeeded()
+
+        if (!receiverRegistered) {
+            ContextCompat.registerReceiver(
+                this,
+                screenOnReceiver,
+                IntentFilter(Intent.ACTION_SCREEN_ON),
+                ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+            receiverRegistered = true
+        }
+        handler.removeCallbacks(tick)
+        handler.postDelayed(tick, TICK_MS)
+    }
+
+    private fun stopProtection() {
+        handler.removeCallbacks(tick)
+        if (receiverRegistered) {
+            runCatching { unregisterReceiver(screenOnReceiver) }
+            receiverRegistered = false
+        }
+        forwarder?.stop()
+        forwarder = null
+        tun?.let { pfd -> runCatching { pfd.close() } }
+        tun = null
+        bedtimeMode = false
+        VpnState.setBedtimeActive(false)
+        VpnState.setStatus(ProtectionStatus.OFF)
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+    }
+
+    /**
+     * Internet vaqtini oladi (kerak bo'lsa). Vaqt olingach uyqu rejimi qayta tekshiriladi:
+     * telefon soati noto'g'ri bo'lgan bo'lsa, shu yerda to'g'rilanadi.
+     */
+    private fun syncClockIfNeeded() {
+        if (tun == null || !TrustedClock.needsSync()) return
+        runCatching {
+            clockExecutor.execute {
+                if (TrustedClock.sync { socket -> protect(socket) }) {
+                    handler.post { syncMode() }
+                }
+            }
+        }
+    }
+
+    /** Uyqu vaqti boshlangan yoki tugagan bo'lsa tunnelni mos rejimda qayta quradi. */
+    private fun syncMode() {
+        if (tun == null) return
+        val shouldBeBedtime = PolicyRepo.current.isBedtime(currentMinuteOfDay())
+        if (shouldBeBedtime != bedtimeMode) {
+            if (!applyTunnel()) {
+                stopProtection()
+                stopSelf()
+            }
+        } else if (bedtimeMode) {
+            // Tugash vaqti o'zgargan bo'lishi mumkin.
+            showForegroundNotification()
+        }
+    }
+
+    /** Yangi tunnelni ochadi, so'ng eskisini yopadi: orada himoyasiz oraliq qolmaydi. */
+    private fun applyTunnel(): Boolean {
+        val wantBedtime = PolicyRepo.current.isBedtime(currentMinuteOfDay())
+        val pfd: ParcelFileDescriptor? = try {
+            buildTunnel(wantBedtime)
+        } catch (e: Exception) {
+            Log.e(TAG, "Tunnelni ochib bo'lmadi", e)
+            null
+        }
+        if (pfd == null) return false
+
+        val oldForwarder = forwarder
+        val oldTun = tun
+        tun = pfd
+        bedtimeMode = wantBedtime
+        forwarder = DnsForwarder(
+            tun = pfd,
+            bedtimeMode = wantBedtime,
+            protect = { socket -> protect(socket) },
+            onSiteBlocked = { domain, reason -> notifier.onBlocked(domain, reason) },
+            onModeMismatch = { handler.post { syncMode() } },
+        ).also { it.start() }
+        oldForwarder?.stop()
+        oldTun?.let { old -> runCatching { old.close() } }
+
+        VpnState.setBedtimeActive(wantBedtime)
+        showForegroundNotification()
+        return true
+    }
+
+    private fun buildTunnel(bedtime: Boolean): ParcelFileDescriptor? {
+        val builder = Builder()
+            .setSession(getString(R.string.app_name))
+            .setMtu(DnsForwarder.MAX_PACKET)
+            .addAddress(TUN_ADDRESS, 32)
+            .addDnsServer(VIRTUAL_DNS)
+            .setConfigureIntent(openAppIntent())
+
+        if (bedtime) {
+            // Uyqu vaqti: butun IPv4 va IPv6 trafik tunnelga kiradi va tashlab yuboriladi.
+            builder.addRoute("0.0.0.0", 0)
+            builder.addAddress(TUN_ADDRESS_V6, 128)
+            builder.addRoute("::", 0)
+        } else {
+            // DNS-only: tunnelga faqat virtual DNS manzili kiradi.
+            builder.addRoute(VIRTUAL_DNS, 32)
+            // Mashhur ochiq DNS manzillari ham tunnelga olinadi: ularga to'g'ridan-to'g'ri
+            // yuborilgan DNS so'rovlari filtrdan o'tadi, shifrlangan DNS (DoT/DoH) esa o'tmaydi.
+            for (address in PUBLIC_DNS_ADDRESSES) {
+                builder.addRoute(address, 32)
+            }
+            // Qolgan IPv4/IPv6 trafik bloklanmasin, odatdagi tarmoqdan o'tsin.
+            builder.allowFamily(OsConstants.AF_INET)
+            builder.allowFamily(OsConstants.AF_INET6)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            builder.setMetered(false)
+        }
+        return builder.establish()
     }
 
     private fun publishSystemSettings() {
@@ -99,38 +249,6 @@ class GuardVpnService : VpnService() {
             SystemVpnSettings()
         }
         VpnState.setSystemSettings(settings)
-    }
-
-    private fun stopProtection() {
-        forwarder?.stop()
-        forwarder = null
-        tun?.let { pfd -> runCatching { pfd.close() } }
-        tun = null
-        VpnState.setStatus(ProtectionStatus.OFF)
-        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-    }
-
-    private fun buildTunnel(): ParcelFileDescriptor? {
-        val builder = Builder()
-            .setSession(getString(R.string.app_name))
-            .setMtu(DnsForwarder.MAX_PACKET)
-            .addAddress(TUN_ADDRESS, 32)
-            .addDnsServer(VIRTUAL_DNS)
-            // DNS-only: tunnelga faqat virtual DNS manzili kiradi.
-            .addRoute(VIRTUAL_DNS, 32)
-            // Qolgan IPv4/IPv6 trafik bloklanmasin, odatdagi tarmoqdan o'tsin.
-            .allowFamily(OsConstants.AF_INET)
-            .allowFamily(OsConstants.AF_INET6)
-            .setConfigureIntent(openAppIntent())
-        // Mashhur ochiq DNS manzillari ham tunnelga olinadi: ularga to'g'ridan-to'g'ri
-        // yuborilgan DNS so'rovlari filtrdan o'tadi, shifrlangan DNS (DoT/DoH) esa o'tmaydi.
-        for (address in PUBLIC_DNS_ADDRESSES) {
-            builder.addRoute(address, 32)
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            builder.setMetered(false)
-        }
-        return builder.establish()
     }
 
     private fun showForegroundNotification(): Boolean {
@@ -157,14 +275,31 @@ class GuardVpnService : VpnService() {
                 NotificationManager.IMPORTANCE_LOW,
             )
         )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_shield)
-            .setContentTitle(getString(R.string.notif_title))
-            .setContentText(getString(R.string.notif_text))
-            .setColor(ContextCompat.getColor(this, R.color.safe))
             .setOngoing(true)
-            .setContentIntent(openAppIntent())
-            .build()
+        if (bedtimeMode) {
+            val endTime = TimeText.format(PolicyRepo.current.bedtimeEnd)
+            builder
+                .setContentTitle(getString(R.string.bedtime_notif_title))
+                .setContentText(getString(R.string.bedtime_opens_at, endTime))
+                .setColor(ContextCompat.getColor(this, R.color.accent))
+                .setContentIntent(
+                    PendingIntent.getActivity(
+                        this,
+                        REQUEST_BEDTIME,
+                        BlockActivity.intent(this, "", BlockReason.BEDTIME, endTime),
+                        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                    )
+                )
+        } else {
+            builder
+                .setContentTitle(getString(R.string.notif_title))
+                .setContentText(getString(R.string.notif_text))
+                .setColor(ContextCompat.getColor(this, R.color.safe))
+                .setContentIntent(openAppIntent())
+        }
+        return builder.build()
     }
 
     private fun openAppIntent(): PendingIntent = PendingIntent.getActivity(
@@ -180,8 +315,11 @@ class GuardVpnService : VpnService() {
         private const val ACTION_REFRESH = "uz.himoya.app.action.REFRESH"
         private const val CHANNEL_ID = "protection_status"
         private const val NOTIFICATION_ID = 1
+        private const val REQUEST_BEDTIME = 1
+        private const val TICK_MS = 60_000L
 
         private const val TUN_ADDRESS = "10.111.222.1"
+        private const val TUN_ADDRESS_V6 = "fd00:6f69:6c61::1"
         private const val VIRTUAL_DNS = "10.111.222.2"
 
         /** 1.1.1.3 va 1.0.0.3 bu ro'yxatda yo'q: ular bizning yuqori serverimiz. */

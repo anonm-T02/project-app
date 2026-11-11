@@ -14,6 +14,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import uz.himoya.app.BlockActivity
 import uz.himoya.app.R
+import uz.himoya.app.vpn.BlockReason
 
 /**
  * Sayt bloklanganda bildirishnoma ko'rsatadi. Bosilsa blok ekrani ochiladi.
@@ -26,7 +27,7 @@ class BlockNotifier(context: Context) {
     private val lastShown = HashMap<String, Long>()
 
     @Synchronized
-    fun onBlocked(rawDomain: String) {
+    fun onBlocked(rawDomain: String, reason: BlockReason) {
         val domain = rawDomain.removePrefix("www.")
         val now = SystemClock.elapsedRealtime()
         val last = lastShown[domain]
@@ -54,13 +55,13 @@ class BlockNotifier(context: Context) {
             val open = PendingIntent.getActivity(
                 context,
                 0,
-                BlockActivity.intent(context, domain),
+                BlockActivity.intent(context, domain, reason),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_shield)
                 .setContentTitle(context.getString(R.string.block_notif_title))
-                .setContentText(context.getString(R.string.block_notif_text, domain))
+                .setContentText(context.getString(R.string.block_notif_text, domain, reasonText(reason)))
                 .setColor(ContextCompat.getColor(context, R.color.accent))
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true)
@@ -73,6 +74,14 @@ class BlockNotifier(context: Context) {
             Log.w(TAG, "Blok bildirishnomasini ko'rsatib bo'lmadi", e)
         }
     }
+
+    private fun reasonText(reason: BlockReason): String = context.getString(
+        when (reason) {
+            BlockReason.GAMBLING -> R.string.block_reason_gambling_short
+            BlockReason.FAMILY_LIST -> R.string.block_reason_family_short
+            else -> R.string.block_reason_adult_short
+        }
+    )
 
     private companion object {
         const val TAG = "BlockNotifier"

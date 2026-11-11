@@ -1,11 +1,13 @@
 package uz.himoya.app.vpn
 
 import android.os.ParcelFileDescriptor
+import android.os.SystemClock
 import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
 import android.system.StructPollfd
 import android.util.Log
+import uz.himoya.app.policy.PolicyRepo
 import java.io.FileDescriptor
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -18,19 +20,28 @@ import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
+/** Hozirgi vaqt, kun boshidan daqiqalarda: internet vaqti, Toshkent bo'yicha. */
+internal fun currentMinuteOfDay(): Int = TrustedClock.minuteOfDay()
+
 /**
- * Tunnelga kelgan DNS so'rovlarini oilaviy DNS serveriga yuboradi va javobni qaytaradi.
+ * Tunnelga kelgan DNS so'rovlarini lokal qoidalardan o'tkazadi, so'ng oilaviy DNS serveriga
+ * yuboradi va javobni qaytaradi.
  *
- * Tunnelga faqat virtual DNS manzili yo'naltirilgan, shuning uchun bu yerdan
- * faqat DNS o'tadi. Sahifalar mazmuni, parollar va boshqa trafik bu kodga kelmaydi.
+ * Oddiy rejimda tunnelga faqat DNS manzillari yo'naltirilgan: sahifalar mazmuni, parollar va
+ * boshqa trafik bu kodga kelmaydi. Uyqu rejimida ([bedtimeMode]) tunnelga butun trafik keladi
+ * va tashlab yuboriladi (o'qilmaydi), DNS so'rovlari esa "topilmadi" javobini oladi.
  */
 class DnsForwarder(
     private val tun: ParcelFileDescriptor,
+    private val bedtimeMode: Boolean,
     private val protect: (DatagramSocket) -> Boolean,
-    /** Oilaviy DNS saytni bloklaganda chaqiriladi (domen nomi bilan). */
-    private val onSiteBlocked: (String) -> Unit,
+    /** Sayt bloklanganda chaqiriladi (domen nomi va sabab bilan). */
+    private val onSiteBlocked: (String, BlockReason) -> Unit,
+    /** Uyqu vaqti boshlangan yoki tugagan, tunnelni qayta qurish kerak. */
+    private val onModeMismatch: () -> Unit,
 ) {
     private val running = AtomicBoolean(false)
+    private val mismatchReported = AtomicBoolean(false)
     private val output = FileOutputStream(tun.fileDescriptor)
     private val workers = ThreadPoolExecutor(
         0, MAX_PARALLEL, 30L, TimeUnit.SECONDS,
@@ -72,6 +83,7 @@ class DnsForwarder(
         val fds = arrayOf(pollTun, pollStop)
         val brokenMask = OsConstants.POLLERR or OsConstants.POLLHUP or OsConstants.POLLNVAL
         var readErrors = 0
+        var lastModeCheck = 0L
 
         try {
             while (running.get()) {
@@ -95,6 +107,14 @@ class DnsForwarder(
                 }
                 if (n <= 0) continue
                 readErrors = 0
+
+                // Uyqu vaqti boshlangan/tugaganini sekundiga ko'pi bilan bir marta tekshiramiz.
+                val uptime = SystemClock.elapsedRealtime()
+                if (uptime - lastModeCheck > MODE_CHECK_MS) {
+                    lastModeCheck = uptime
+                    checkMode()
+                }
+
                 val query = DnsPacket.parseQuery(buf, n) ?: continue
                 workers.execute { resolve(query) }
             }
@@ -103,24 +123,16 @@ class DnsForwarder(
         }
     }
 
+    private fun checkMode() {
+        val shouldBeBedtime = PolicyRepo.current.isBedtime(currentMinuteOfDay())
+        if (shouldBeBedtime != bedtimeMode && mismatchReported.compareAndSet(false, true)) {
+            onModeMismatch()
+        }
+    }
+
     private fun resolve(query: DnsQuery) {
         try {
-            val name = DnsPacket.questionName(query.payload)
-            val reply: ByteArray? = when (val decision = LocalRules.decide(name)) {
-                DnsDecision.Block -> {
-                    VpnState.countBlocked()
-                    DnsMessage.response(query.payload, DnsMessage.RCODE_NXDOMAIN)
-                }
-
-                is DnsDecision.Remap -> remap(query.payload, decision.target)
-
-                DnsDecision.Forward -> exchange(query.payload)?.also { answer ->
-                    if (DnsMessage.isBlockedAnswer(answer)) {
-                        VpnState.countBlocked()
-                        if (name != null) onSiteBlocked(name)
-                    }
-                }
-            }
+            val reply = answer(query.payload)
             if (reply != null) {
                 write(DnsPacket.buildResponse(query, reply, reply.size))
                 VpnState.countRequest()
@@ -129,6 +141,33 @@ class DnsForwarder(
             // Tunnel yopilgan bo'lishi mumkin.
         } catch (e: RuntimeException) {
             Log.w(TAG, "DNS so'rovini qayta ishlab bo'lmadi", e)
+        }
+    }
+
+    private fun answer(payload: ByteArray): ByteArray? {
+        if (bedtimeMode) {
+            return DnsMessage.response(payload, DnsMessage.RCODE_NXDOMAIN)
+        }
+        val name = DnsPacket.questionName(payload)
+        return when (val decision = LocalRules.decide(name, PolicyRepo.current)) {
+            is DnsDecision.Block -> {
+                VpnState.countBlocked()
+                if (decision.reason != BlockReason.ENCRYPTED_DNS && name != null) {
+                    onSiteBlocked(name, decision.reason)
+                }
+                DnsMessage.response(payload, DnsMessage.RCODE_NXDOMAIN)
+            }
+
+            is DnsDecision.Remap -> remap(payload, decision.target)
+
+            DnsDecision.ForwardUnfiltered -> exchange(payload, UNFILTERED_UPSTREAMS)
+
+            DnsDecision.Forward -> exchange(payload, FAMILY_UPSTREAMS)?.also { upstream ->
+                if (DnsMessage.isBlockedAnswer(upstream)) {
+                    VpnState.countBlocked()
+                    if (name != null) onSiteBlocked(name, BlockReason.ADULT_OR_HARMFUL)
+                }
+            }
         }
     }
 
@@ -142,8 +181,10 @@ class DnsForwarder(
             // Boshqa turdagi yozuvlar (masalan HTTPS) bo'sh javob oladi.
             return DnsMessage.response(payload, DnsMessage.RCODE_NOERROR)
         }
-        val upstream = exchange(DnsMessage.buildQuery(DnsMessage.id(payload), target, qtype))
-            ?: return DnsMessage.response(payload, DnsMessage.RCODE_SERVFAIL)
+        val upstream = exchange(
+            DnsMessage.buildQuery(DnsMessage.id(payload), target, qtype),
+            FAMILY_UPSTREAMS,
+        ) ?: return DnsMessage.response(payload, DnsMessage.RCODE_SERVFAIL)
         return DnsMessage.response(
             payload,
             DnsMessage.RCODE_NOERROR,
@@ -151,10 +192,10 @@ class DnsForwarder(
         )
     }
 
-    /** So'rovni oilaviy DNS'ga yuboradi. Hech bir server javob bermasa null. */
-    private fun exchange(payload: ByteArray): ByteArray? {
+    /** So'rovni berilgan serverlarga yuboradi. Hech biri javob bermasa null. */
+    private fun exchange(payload: ByteArray, servers: List<InetAddress>): ByteArray? {
         val answer = ByteArray(MAX_DNS)
-        for (server in UPSTREAMS) {
+        for (server in servers) {
             try {
                 DatagramSocket().use { socket ->
                     // Soket VPN'dan tashqarida, oddiy tarmoq orqali chiqadi.
@@ -184,13 +225,20 @@ class DnsForwarder(
         private const val DNS_PORT = 53
         private const val TIMEOUT_MS = 3000
         private const val MAX_PARALLEL = 32
+        private const val MODE_CHECK_MS = 1000L
         const val MAX_DNS = 4096
         const val MAX_PACKET = MAX_DNS + 28
 
         /** Cloudflare for Families: kattalar kontenti va zararli saytlarni bloklaydi. */
-        private val UPSTREAMS: List<InetAddress> = listOf(
+        private val FAMILY_UPSTREAMS: List<InetAddress> = listOf(
             InetAddress.getByAddress(byteArrayOf(1, 1, 1, 3)),
             InetAddress.getByAddress(byteArrayOf(1, 0, 0, 3)),
+        )
+
+        /** Faqat ota-ona ruxsat bergan saytlar uchun: filtrsiz Cloudflare DNS. */
+        private val UNFILTERED_UPSTREAMS: List<InetAddress> = listOf(
+            InetAddress.getByAddress(byteArrayOf(1, 1, 1, 1)),
+            InetAddress.getByAddress(byteArrayOf(1, 0, 0, 1)),
         )
     }
 }
