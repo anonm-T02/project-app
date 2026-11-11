@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Ishchi nom. Yakuniy brend tanlanganda faqat shu qator almashtiriladi. -->
+    <string name="app_name">Oilaviy Himoya</string>
+
+    <string name="status_on_title">Himoya faol</string>
+    <string name="status_on_subtitle">Zararli saytlar yopiq</string>
+    <string name="status_off_title">Himoya oʻchiq</string>
+    <string name="status_off_subtitle">Internet hozir filtrlanmayapti</string>
+    <string name="status_starting_title">Yoqilmoqda…</string>
+    <string name="status_starting_subtitle">Bir necha soniya kuting</string>
+
+    <string name="action_turn_on">Himoyani yoqish</string>
+    <string name="action_turn_off">Himoyani oʻchirish</string>
+
+    <string name="request_counters">Tekshirildi: %1$d · Bloklandi: %2$d</string>
+    <string name="disclaimer">Himoya 100%% emas. Ilovalar ichidagi kontent (Telegram, YouTube va boshqalar) filtrlanmaydi. Ota-ona nazorati bilan birga ishlating.</string>
+
+    <string name="notif_channel_name">Himoya holati</string>
+    <string name="notif_title">Himoya faol</string>
+    <string name="notif_text">Internet filtri ishlayapti</string>
+    <string name="action_continue">Davom etish</string>
+    <string name="action_cancel">Bekor</string>
+    <string name="action_open_settings">Sozlamalarni ochish</string>
+
+    <string name="pin_create_title">Ota-ona PIN kodini oʻrnating</string>
+    <string name="pin_repeat_title">PIN kodni takrorlang</string>
+    <string name="pin_create_subtitle">4–6 ta raqam. Bu kodni farzandingizga aytmang.</string>
+    <string name="pin_verify_title">Ota-ona PIN kodini kiriting</string>
+    <string name="pin_verify_subtitle">Ilovaga kirish uchun PIN kerak.</string>
+    <string name="pin_mismatch">Kodlar mos kelmadi. Qaytadan kiriting.</string>
+    <string name="pin_wrong">PIN notoʻgʻri. Qolgan urinishlar: %1$d</string>
+    <string name="pin_locked">Juda koʻp xato urinish. %1$d soniyadan keyin urinib koʻring.</string>
+
+    <string name="always_on_title">Himoyani mustahkamlang</string>
+    <string name="always_on_text">Telefon sozlamalarida shu ilova uchun “Doim yoqiq VPN”ni yoqing. Shunda himoya telefon qayta yoqilganda ham oʻzi ishga tushadi.</string>
+    <string name="always_on_active">Doim yoqiq rejim faol</string>
+    <string name="lockdown_title">Internet toʻxtab qolishi mumkin</string>
+    <string name="lockdown_text">Sozlamalarda “VPN’siz ulanishni bloklash” yoqilgan. Bu ilova bilan u internetni toʻxtatib qoʻyishi mumkin. Uni oʻchirib, faqat “Doim yoqiq VPN”ni qoldiring.</string>
+
+    <string name="private_dns_title">Private DNS filtrga xalaqit beradi</string>
+    <string name="private_dns_text">Telefonda Private DNS provayderi qoʻlda yozilgan (%1$s). Bu holatda himoya ishlamasligi yoki internet toʻxtab qolishi mumkin. Sozlamalarda Private DNS’ni “Avtomatik” qiling.</string>
+
+    <string name="block_channel_name">Yopilgan sahifalar</string>
+    <string name="block_notif_title">Sahifa yopildi</string>
+    <string name="block_notif_text">%1$s — yoshga mos emas yoki xavfli</string>
+    <string name="block_title">Bu sahifa hozircha yopiq</string>
+    <string name="block_reason">Yoshga mos emas yoki xavfli sayt</string>
+    <string name="block_hint">Bu jazo emas, himoya. Sahifa xato yopilgan deb oʻylasangiz, ota-onangizga ayting.</string>
+    <string name="block_action_ok">Tushunarli</string>
+</resources>
