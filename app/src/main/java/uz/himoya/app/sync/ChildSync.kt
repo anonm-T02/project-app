@@ -46,6 +46,7 @@ object ChildSync {
         return try {
             val response = Api.call("POST", "/api/device/sync", token, body)
             BlockLog.confirm(events)
+            applyTempAllow(response)
             val version = response.optInt("policyVersion", 0)
             val remote = response.optJSONObject("policy")
             var changed = false
@@ -77,6 +78,18 @@ object ChildSync {
             Log.w(TAG, "Sinxronlashda xato", e)
             Outcome.FAILED
         }
+    }
+
+    /** Ota-ona vaqtincha ochib bergan saytlar ro'yxatini yangilaydi. */
+    private fun applyTempAllow(response: JSONObject) {
+        val array = response.optJSONArray("tempAllow") ?: return
+        val map = HashMap<String, Long>()
+        for (i in 0 until array.length()) {
+            val item = array.optJSONObject(i) ?: continue
+            val domain = item.optString("domain")
+            if (domain.isNotEmpty()) map[domain] = item.optLong("until")
+        }
+        TempAllow.replace(map)
     }
 
     private fun appVersion(context: Context): String = try {

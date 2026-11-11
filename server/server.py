@@ -30,6 +30,10 @@ MAX_EVENTS = 100             # har bir qurilma uchun saqlanadigan oxirgi bloklar
 MAX_BODY = 256 * 1024
 MAX_LIST = 500               # ro'yxatdagi domenlar soni chegarasi
 PAIR_ATTEMPTS_PER_MINUTE = 10
+MAX_REQUESTS = 50            # har bir qurilma uchun saqlanadigan ruxsat so'rovlari
+REQUEST_KEEP_MS = 7 * 24 * 3600 * 1000
+TASHKENT_OFFSET_MS = 5 * 3600 * 1000
+DAY_MS = 24 * 3600 * 1000
 
 LOCK = threading.Lock()
 DATA = {"families": {}, "devices": {}}
@@ -55,6 +59,49 @@ def save():
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(DATA, f, ensure_ascii=False, indent=1)
     os.replace(tmp, DATA_FILE)
+
+
+def end_of_day_tashkent(ms):
+    """Toshkent vaqti bo'yicha shu kunning oxiri (yarim tun), UTC millisekundda."""
+    local = ms + TASHKENT_OFFSET_MS
+    return (local // DAY_MS + 1) * DAY_MS - TASHKENT_OFFSET_MS
+
+
+def prune_requests(d):
+    """Eski so'rovlarni tashlaydi va muddati o'tgan ruxsatlarni belgilaydi."""
+    now = now_ms()
+    kept = []
+    for r in d.get("requests", []):
+        if r["createdAt"] < now - REQUEST_KEEP_MS:
+            continue
+        if r["status"] == "APPROVED" and r.get("until", 0) <= now:
+            r["status"] = "EXPIRED"
+        kept.append(r)
+    d["requests"] = kept[-MAX_REQUESTS:]
+    return d["requests"]
+
+
+def temp_allow(d):
+    """Hozir amalda bo'lgan vaqtinchalik ruxsatlar."""
+    return [
+        {"domain": r["domain"], "until": r["until"]}
+        for r in prune_requests(d)
+        if r["status"] == "APPROVED"
+    ]
+
+
+def clean_domain(value):
+    if not isinstance(value, str):
+        raise ApiError(400, "domen kerak")
+    domain = value.strip().lower().rstrip(".")
+    if domain.startswith("www."):
+        domain = domain[4:]
+    ok = 3 < len(domain) <= 253 and "." in domain and all(
+        c.isascii() and (c.isalnum() or c in "-.") for c in domain
+    )
+    if not ok:
+        raise ApiError(400, "domen noto'g'ri")
+    return domain
 
 
 class ApiError(Exception):
@@ -130,6 +177,7 @@ def device_view(device_id, d):
         "policy": d.get("policy"),
         "policyVersion": d.get("policyVersion", 0),
         "events": list(reversed(d.get("events", [])))[:30],
+        "requests": list(reversed(prune_requests(d)))[:20],
     }
 
 
@@ -301,6 +349,7 @@ class Handler(BaseHTTPRequestHandler):
                 "status": {},
                 "lastSeenAt": now_ms(),
                 "events": [],
+                "requests": [],
                 "createdAt": now_ms(),
             }
             save()
@@ -325,8 +374,71 @@ class Handler(BaseHTTPRequestHandler):
             return 200, {
                 "policy": d.get("policy"),
                 "policyVersion": d.get("policyVersion", 0),
+                "tempAllow": temp_allow(d),
                 "serverTime": now_ms(),
             }
+
+        # Bola: "Ruxsat so'rash"
+        if method == "POST" and rest == ["device", "requests"]:
+            _, d = self.device()
+            domain = clean_domain(body.get("domain"))
+            note = str(body.get("note", "")).strip()[:120]
+            requests = prune_requests(d)
+            for r in requests:
+                # Shu sayt uchun javobsiz so'rov bor bo'lsa, yangisi ochilmaydi.
+                if r["domain"] == domain and r["status"] == "PENDING":
+                    if note:
+                        r["note"] = note
+                        save()
+                    return 200, r
+            request = {
+                "id": secrets.token_hex(8),
+                "domain": domain,
+                "note": note,
+                "status": "PENDING",
+                "until": 0,
+                "createdAt": now_ms(),
+            }
+            requests.append(request)
+            d["requests"] = requests[-MAX_REQUESTS:]
+            save()
+            return 200, request
+
+        if method == "GET" and len(rest) == 3 and rest[:2] == ["device", "requests"]:
+            _, d = self.device()
+            for r in prune_requests(d):
+                if r["id"] == rest[2]:
+                    return 200, dict(r, serverTime=now_ms())
+            raise ApiError(404, "so'rov topilmadi")
+
+        # Ota-ona: so'rovga javob
+        if method == "POST" and len(rest) == 3 and rest[0] == "requests" and rest[2] == "resolve":
+            family_id = self.parent_family()
+            for d in DATA["devices"].values():
+                if d["familyId"] != family_id:
+                    continue
+                for r in prune_requests(d):
+                    if r["id"] != rest[1]:
+                        continue
+                    action = body.get("action")
+                    if action == "deny":
+                        r["status"] = "DENIED"
+                        r["until"] = 0
+                    elif action == "allow":
+                        minutes = body.get("minutes")
+                        if minutes == "today":
+                            r["until"] = end_of_day_tashkent(now_ms())
+                        elif isinstance(minutes, int) and not isinstance(minutes, bool) and 1 <= minutes <= 1440:
+                            r["until"] = now_ms() + minutes * 60_000
+                        else:
+                            raise ApiError(400, "muddat noto'g'ri")
+                        r["status"] = "APPROVED"
+                    else:
+                        raise ApiError(400, "action noto'g'ri")
+                    r["resolvedAt"] = now_ms()
+                    save()
+                    return 200, r
+            raise ApiError(404, "so'rov topilmadi")
 
         if method == "POST" and rest == ["device", "unpair"]:
             device_id, _ = self.device()

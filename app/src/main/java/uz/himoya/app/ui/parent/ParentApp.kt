@@ -2,6 +2,7 @@ package uz.himoya.app.ui.parent
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,6 +59,7 @@ import uz.himoya.app.sync.BlockEvent
 import uz.himoya.app.sync.ChildDevice
 import uz.himoya.app.sync.ParentApi
 import uz.himoya.app.sync.SyncStore
+import uz.himoya.app.sync.UnlockRequest
 import uz.himoya.app.ui.settings.Card
 import uz.himoya.app.ui.settings.ServerUrlField
 import uz.himoya.app.ui.settings.SettingsScreen
@@ -205,6 +207,10 @@ private fun ParentHomeScreen(
     onAddChild: () -> Unit,
     onSwitchRole: () -> Unit,
 ) {
+    val scope = rememberCoroutineScope()
+    // Javob berilgan so'rovlar server yangilanguncha ekrandan yashiriladi.
+    var answered by remember { mutableStateOf<Set<String>>(emptySet()) }
+
     Page {
         Text(text = stringResource(R.string.parent_title), style = MaterialTheme.typography.titleLarge)
 
@@ -243,6 +249,29 @@ private fun ParentHomeScreen(
                     else -> AppColors.Danger
                 },
             )
+        }
+
+        // Javob kutayotgan ruxsat so'rovlari eng tepada turadi.
+        for (device in devices) {
+            for (request in device.requests) {
+                if (request.status == UnlockRequest.PENDING && request.id !in answered) {
+                    RequestCard(
+                        childName = device.name,
+                        request = request,
+                        onAnswer = { minutes ->
+                            answered = answered + request.id
+                            scope.launch {
+                                try {
+                                    withContext(Dispatchers.IO) { ParentApi.resolve(request.id, minutes) }
+                                } catch (e: IOException) {
+                                    // Yuborilmadi: so'rov ro'yxatga qaytadi.
+                                    answered = answered - request.id
+                                }
+                            }
+                        },
+                    )
+                }
+            }
         }
 
         for (device in devices) {
@@ -297,6 +326,60 @@ private fun ParentHomeScreen(
                 color = AppColors.TextMuted,
             )
         }
+    }
+}
+
+/** Bolaning ruxsat so'rovi: muddatni tanlab ochib berish yoki rad etish. */
+@Composable
+private fun RequestCard(childName: String, request: UnlockRequest, onAnswer: (Int?) -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(AppColors.Surface)
+            .border(1.5.dp, AppColors.Accent, RoundedCornerShape(18.dp))
+            .padding(18.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.parent_request_title, childName),
+            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = request.domain,
+            style = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
+        )
+        if (request.note.isNotBlank()) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = stringResource(R.string.parent_request_note, request.note),
+                style = MaterialTheme.typography.bodyMedium,
+                color = AppColors.TextMuted,
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AnswerButton(stringResource(R.string.parent_allow_15), Modifier.weight(1f)) { onAnswer(15) }
+            AnswerButton(stringResource(R.string.parent_allow_60), Modifier.weight(1f)) { onAnswer(60) }
+            AnswerButton(stringResource(R.string.parent_allow_today), Modifier.weight(1f)) {
+                onAnswer(ParentApi.TODAY)
+            }
+        }
+        TextButton(onClick = { onAnswer(null) }) {
+            Text(stringResource(R.string.parent_deny), color = AppColors.Danger)
+        }
+    }
+}
+
+@Composable
+private fun AnswerButton(label: String, modifier: Modifier, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.height(56.dp),
+        shape = RoundedCornerShape(14.dp),
+        contentPadding = PaddingValues(horizontal = 4.dp),
+    ) {
+        Text(text = label, fontSize = 17.sp, maxLines = 1)
     }
 }
 

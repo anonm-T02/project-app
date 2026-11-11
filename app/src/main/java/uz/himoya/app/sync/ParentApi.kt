@@ -16,6 +16,7 @@ data class ChildDevice(
     val blocked: Long,
     val policy: Policy,
     val events: List<BlockEvent>,
+    val requests: List<UnlockRequest>,
 )
 
 class DeviceList(val serverTime: Long, val devices: List<ChildDevice>)
@@ -69,6 +70,20 @@ object ParentApi {
         )
     }
 
+    /** [minutes]: daqiqalar soni, [TODAY] (kun oxirigacha) yoki null (rad etish). */
+    @Throws(IOException::class)
+    fun resolve(requestId: String, minutes: Int?) {
+        val body = JSONObject()
+        when (minutes) {
+            null -> body.put("action", "deny")
+            TODAY -> body.put("action", "allow").put("minutes", "today")
+            else -> body.put("action", "allow").put("minutes", minutes)
+        }
+        Api.call("POST", "/api/requests/$requestId/resolve", token(), body)
+    }
+
+    const val TODAY = -1
+
     @Throws(IOException::class)
     fun remove(deviceId: String) {
         Api.call("DELETE", "/api/devices/$deviceId", token())
@@ -85,6 +100,14 @@ object ParentApi {
                 events.add(BlockEvent(e.optString("domain"), e.optString("reason"), e.optLong("at")))
             }
         }
+        val requests = ArrayList<UnlockRequest>()
+        val requestsJson = json.optJSONArray("requests")
+        if (requestsJson != null) {
+            for (i in 0 until requestsJson.length()) {
+                val r = requestsJson.optJSONObject(i) ?: continue
+                requests.add(UnlockRequest.fromJson(r))
+            }
+        }
         return ChildDevice(
             id = json.optString("id"),
             name = json.optString("name"),
@@ -96,6 +119,7 @@ object ParentApi {
             blocked = status.optLong("blocked"),
             policy = if (policyJson != null) PolicyJson.fromJson(policyJson) else Policy(),
             events = events,
+            requests = requests,
         )
     }
 }

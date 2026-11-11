@@ -72,8 +72,11 @@ app/src/main/java/uz/himoya/app/
   mintaqani ota-ona sozlamasiga chiqarish kerak bo'ladi.
 - **Qimor ro'yxati to'liq emas.** Bu saytlar manzilini tez-tez almashtiradi; brend nomi bo'yicha
   tekshiruv ko'pini ushlaydi, lekin hammasini emas.
-- **Ota-onaga push-xabar yo'q.** Lokal serverda push yo'q: ota-ona holatni faqat ilovani ochganda
-  ko'radi. Haqiqiy backend'da FCM orqali "himoya o'chdi" xabari qo'shiladi.
+- **Ota-ona xabarlari fon so'rovi orqali keladi, haqiqiy push emas.** Ota-ona telefonida
+  `ParentWatchService` har 15 soniyada serverdan holatni so'raydi va bildirishnoma chiqaradi:
+  ruxsat so'rovi, "himoya o'chirildi", "qurilma 3 daqiqadan beri ko'rinmayapti". Buning uchun
+  doimiy "Oila kuzatuvi yoqiq" bildirishnomasi turadi. Telefon chuqur uyquga ketganda xabar
+  kechikishi mumkin. Haqiqiy backend'da bu FCM bilan almashtiriladi.
 
 ## Ota-ona PIN kodi (Phase 1.1)
 
@@ -187,6 +190,9 @@ Debug yig'masidagina shifrlashsiz ulanishga ruxsat bor (`app/src/debug/AndroidMa
 | `GET /api/devices` | ota-ona | Qurilmalar holati, qoidalar, oxirgi 30 ta blok |
 | `PUT /api/devices/{id}/policy` | ota-ona | Qoidalarni o'zgartiradi |
 | `DELETE /api/devices/{id}` | ota-ona | Qurilmani ro'yxatdan o'chiradi |
+| `POST /api/device/requests` | bola | Saytga ruxsat so'raydi |
+| `GET /api/device/requests/{id}` | bola | So'rov holatini tekshiradi |
+| `POST /api/requests/{id}/resolve` | ota-ona | Ruxsat beradi (muddat bilan) yoki rad etadi |
 
 **Sinxronlash.** Bola telefoni himoya yoqiq paytda har 15 soniyada `sync` yuboradi (telefon
 uxlaganda to'xtaydi). Qoidalar versiya raqami bilan yuradi: ota-ona o'zgartirsa versiya oshadi va
@@ -203,8 +209,21 @@ so'zlari va sahifa mazmuni yuborilmaydi.
 
 **PIN** har bir telefonda alohida va serverga yuborilmaydi.
 
-Keyingi qadam (Phase 2.2): bola "Ruxsat so'rash" yuboradi, ota-ona 15 daqiqa / 1 soat / bugun
-ruxsat beradi yoki rad etadi.
+### Ruxsat so'rash (Phase 2.2)
+
+1. Bola blok ekranida "Ruxsat so'rash"ni bosadi, xohlasa sababini yozadi (120 belgigacha).
+   Tugma faqat telefon ota-onaga bog'langan bo'lsa ko'rinadi; uyqu vaqtida ko'rinmaydi.
+2. So'rov serverga boradi (`POST /api/device/requests`). Shu sayt uchun javobsiz so'rov bo'lsa,
+   yangisi ochilmaydi.
+3. Ota-ona telefonining bosh sahifasida so'rov kartasi chiqadi: 15 daqiqa, 1 soat, bugun
+   (Toshkent vaqti bilan kun oxirigacha) yoki rad etish (`POST /api/requests/{id}/resolve`).
+4. Bola telefoni javobni har 4 soniyada tekshiradi va blok ekranida ko'rsatadi.
+5. Ruxsat berilgan sayt belgilangan vaqtgacha ruxsat ro'yxatidagidek ishlaydi (`TempAllow`):
+   filtrsiz DNS orqali ochiladi, muddat tugagach o'zi yopiladi. Muddat internet vaqti bo'yicha
+   hisoblanadi, telefon soatini surish uni uzaytirmaydi.
+
+Vaqtinchalik ruxsat shifrlangan DNS blokini, xavfsiz qidiruvni va uyqu vaqtini bekor qilmaydi.
+Ota-ona telefoniga so'rov haqida bildirishnoma keladi (fon so'rovi orqali, yuqoriga qarang).
 
 ## Ochiq savollar
 

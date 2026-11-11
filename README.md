@@ -31,8 +31,8 @@ qimor, fishing va zararli saytlardan himoya qilishga yordam beradi.
 | Phase 1.3 | Blok bildirishnomasi va blok ekrani | tayyor |
 | Phase 1.4 | Sozlamalar: oila ro'yxatlari, qimor filtri, uyqu vaqti | sinovda |
 | Phase 1.5 | Ilovani o'chirib tashlashdan himoya | navbatda |
-| Phase 2.1 | Ota-ona telefoni: juftlash, holat, qoidalarni masofadan boshqarish (lokal server) | sinovda |
-| Phase 2.2 | "Ruxsat so'rash" va ota-ona javobi | navbatda |
+| Phase 2.1 | Ota-ona telefoni: juftlash, holat, qoidalarni masofadan boshqarish (lokal server) | tayyor |
+| Phase 2.2 | "Ruxsat so'rash" va ota-ona javobi | sinovda |
 | Phase 2 | Oila sinxronizatsiyasi (ota-ona telefoni, so'rovlar) | keyin |
 | Phase 3 | Ilovalarni bloklash, kunlik limit | keyin |
 | Phase 4 | Play'ga chiqarish | keyin |

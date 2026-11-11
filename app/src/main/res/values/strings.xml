@@ -123,4 +123,28 @@
     <string name="parent_always_on_missing">“Doim yoqiq VPN” yoqilmagan: telefon qayta yoqilganda himoya oʻzi ishga tushmaydi.</string>
     <string name="parent_remove">Qurilmani roʻyxatdan oʻchirish</string>
     <string name="parent_remove_confirm">Tasdiqlash uchun yana bosing</string>
+
+    <string name="request_action">Ruxsat soʻrash</string>
+    <string name="request_note_placeholder">Nima uchun kerak? (ixtiyoriy)</string>
+    <string name="request_send">Ota-onamga yuborish</string>
+    <string name="request_waiting">Ota-onangizga yuborildi. Javob kutilmoqda…</string>
+    <string name="request_approved">Ruxsat berildi. Sayt soat %1$s gacha ochiq. Sahifani yangilang.</string>
+    <string name="request_denied">Ota-onangiz hozircha ruxsat bermadi.</string>
+
+    <string name="parent_request_title">%1$s ruxsat soʻrayapti</string>
+    <string name="parent_request_note">Sababi: %1$s</string>
+    <string name="parent_allow_15">15 daqiqa</string>
+    <string name="parent_allow_60">1 soat</string>
+    <string name="parent_allow_today">Bugun</string>
+    <string name="parent_deny">Rad etish</string>
+
+    <string name="watch_channel_name">Oila kuzatuvi</string>
+    <string name="watch_notif_title">Oila kuzatuvi yoqiq</string>
+    <string name="watch_notif_text">Farzandingiz telefoni holati tekshirib turiladi</string>
+    <string name="alert_channel_name">Oila xabarlari</string>
+    <string name="alert_request_title">%1$s ruxsat soʻrayapti</string>
+    <string name="alert_off_title">%1$s telefonida himoya oʻchirildi</string>
+    <string name="alert_off_text">Internet hozir filtrlanmayapti.</string>
+    <string name="alert_silent_title">%1$s telefoni koʻrinmayapti</string>
+    <string name="alert_silent_text">3 daqiqadan beri xabar kelmadi. Telefon oʻchgan yoki internet yoʻq boʻlishi mumkin.</string>
 </resources>

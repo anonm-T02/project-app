@@ -21,11 +21,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,10 +52,26 @@ import uz.himoya.app.R
 import uz.himoya.app.ui.theme.AppColors
 import uz.himoya.app.ui.theme.AppTheme
 import uz.himoya.app.vpn.BlockReason
+import uz.himoya.app.vpn.TimeMath
+import uz.himoya.app.policy.TimeText
+import uz.himoya.app.sync.ChildRequests
+import uz.himoya.app.sync.TempAllow
+import uz.himoya.app.sync.UnlockRequest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.IOException
 
 /** Tinch ohangdagi blok ekrani: qo'rqitmaydi, nima bo'lganini tushuntiradi. */
 @Composable
-fun BlockScreen(reason: BlockReason, domain: String, detail: String, onClose: () -> Unit) {
+fun BlockScreen(
+    reason: BlockReason,
+    domain: String,
+    detail: String,
+    canRequest: Boolean,
+    onClose: () -> Unit,
+) {
     val isBedtime = reason == BlockReason.BEDTIME
     val titleText = stringResource(if (isBedtime) R.string.bedtime_title else R.string.block_title)
     val reasonText = when (reason) {
@@ -126,12 +150,16 @@ fun BlockScreen(reason: BlockReason, domain: String, detail: String, onClose: ()
 
             Spacer(Modifier.weight(1f))
 
-            Text(
-                text = hintText,
-                style = MaterialTheme.typography.bodyMedium,
-                color = AppColors.TextMuted,
-                textAlign = TextAlign.Center,
-            )
+            if (canRequest && !isBedtime && domain.isNotEmpty()) {
+                UnlockRequestPanel(domain)
+            } else {
+                Text(
+                    text = hintText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = AppColors.TextMuted,
+                    textAlign = TextAlign.Center,
+                )
+            }
             Spacer(Modifier.height(16.dp))
             Button(
                 onClick = onClose,
@@ -142,6 +170,136 @@ fun BlockScreen(reason: BlockReason, domain: String, detail: String, onClose: ()
             ) {
                 Text(stringResource(R.string.block_action_ok))
             }
+        }
+    }
+}
+
+private enum class RequestStep { IDLE, WRITING, SENDING, WAITING, APPROVED, DENIED, FAILED }
+
+/**
+ * "Ruxsat so'rash": bola xohlasa sababini yozadi, so'rov ota-ona telefoniga boradi va javob
+ * shu yerda ko'rinadi. Ruxsat berilsa sayt belgilangan vaqtgacha ochiladi.
+ */
+@Composable
+private fun UnlockRequestPanel(domain: String) {
+    val scope = rememberCoroutineScope()
+    var step by remember(domain) { mutableStateOf(RequestStep.IDLE) }
+    var note by remember(domain) { mutableStateOf("") }
+    var requestId by remember(domain) { mutableStateOf<String?>(null) }
+    var until by remember(domain) { mutableLongStateOf(0L) }
+
+    fun showResult(request: UnlockRequest) {
+        requestId = request.id
+        when (request.status) {
+            UnlockRequest.APPROVED -> {
+                until = request.until
+                // Keyingi sinxronlashni kutmasdan sayt darhol ochilsin.
+                TempAllow.put(domain, request.until)
+                step = RequestStep.APPROVED
+            }
+
+            UnlockRequest.DENIED -> step = RequestStep.DENIED
+            else -> step = RequestStep.WAITING
+        }
+    }
+
+    // Javob kutilayotganda ota-ona qarorini tekshirib turadi.
+    val waitingId = requestId
+    LaunchedEffect(step, waitingId) {
+        if (step != RequestStep.WAITING || waitingId == null) return@LaunchedEffect
+        while (true) {
+            delay(4000)
+            try {
+                val request = withContext(Dispatchers.IO) { ChildRequests.check(waitingId) }
+                if (request.status != UnlockRequest.PENDING) {
+                    showResult(request)
+                    break
+                }
+            } catch (e: IOException) {
+                // Keyingi urinishda qayta tekshiriladi.
+            }
+        }
+    }
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+        when (step) {
+            RequestStep.IDLE, RequestStep.FAILED -> {
+                if (step == RequestStep.FAILED) {
+                    Text(
+                        text = stringResource(R.string.error_server),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = AppColors.Danger,
+                        textAlign = TextAlign.Center,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+                OutlinedButton(
+                    onClick = { step = RequestStep.WRITING },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(64.dp),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Text(stringResource(R.string.request_action), color = AppColors.Accent)
+                }
+            }
+
+            RequestStep.WRITING, RequestStep.SENDING -> {
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it.take(120) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = step == RequestStep.WRITING,
+                    placeholder = { Text(stringResource(R.string.request_note_placeholder)) },
+                    maxLines = 3,
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedButton(
+                    enabled = step == RequestStep.WRITING,
+                    onClick = {
+                        step = RequestStep.SENDING
+                        scope.launch {
+                            try {
+                                showResult(withContext(Dispatchers.IO) { ChildRequests.send(domain, note.trim()) })
+                            } catch (e: IOException) {
+                                step = RequestStep.FAILED
+                            } catch (e: RuntimeException) {
+                                step = RequestStep.FAILED
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(64.dp),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Text(stringResource(R.string.request_send), color = AppColors.Accent)
+                }
+            }
+
+            RequestStep.WAITING -> Text(
+                text = stringResource(R.string.request_waiting),
+                style = MaterialTheme.typography.bodyLarge,
+                color = AppColors.Accent,
+                textAlign = TextAlign.Center,
+            )
+
+            RequestStep.APPROVED -> Text(
+                text = stringResource(
+                    R.string.request_approved,
+                    TimeText.format(TimeMath.minuteOfDay(until)),
+                ),
+                style = MaterialTheme.typography.bodyLarge,
+                color = AppColors.Safe,
+                textAlign = TextAlign.Center,
+            )
+
+            RequestStep.DENIED -> Text(
+                text = stringResource(R.string.request_denied),
+                style = MaterialTheme.typography.bodyLarge,
+                color = AppColors.TextMuted,
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }
@@ -175,6 +333,6 @@ private fun LockIcon(modifier: Modifier = Modifier) {
 @Composable
 private fun BlockScreenPreview() {
     AppTheme {
-        BlockScreen(BlockReason.ADULT_OR_HARMFUL, "example.com", "", onClose = {})
+        BlockScreen(BlockReason.ADULT_OR_HARMFUL, "example.com", "", canRequest = true, onClose = {})
     }
 }

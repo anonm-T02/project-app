@@ -8,6 +8,7 @@ import android.system.OsConstants
 import android.system.StructPollfd
 import android.util.Log
 import uz.himoya.app.policy.PolicyRepo
+import uz.himoya.app.sync.TempAllow
 import java.io.FileDescriptor
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -149,7 +150,13 @@ class DnsForwarder(
             return DnsMessage.response(payload, DnsMessage.RCODE_NXDOMAIN)
         }
         val name = DnsPacket.questionName(payload)
-        return when (val decision = LocalRules.decide(name, PolicyRepo.current)) {
+        // Ota-ona vaqtincha ochib bergan saytlar ruxsat ro'yxatiga qo'shib hisoblanadi.
+        var policy = PolicyRepo.current
+        val tempAllowed = TempAllow.active(TrustedClock.nowUtcMs())
+        if (tempAllowed.isNotEmpty()) {
+            policy = policy.copy(whitelist = policy.whitelist + tempAllowed)
+        }
+        return when (val decision = LocalRules.decide(name, policy)) {
             is DnsDecision.Block -> {
                 VpnState.countBlocked()
                 if (decision.reason != BlockReason.ENCRYPTED_DNS && name != null) {

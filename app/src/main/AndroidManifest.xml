@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:allowBackup="false"
@@ -33,6 +35,28 @@
             android:exported="false"
             android:launchMode="singleTop"
             android:taskAffinity="" />
+
+        <!--
+          Ota-ona telefonida fon kuzatuvi. Vaqtinchalik: lokal serverda push yo'q.
+          Haqiqiy backend'da FCM bilan almashtiriladi.
+        -->
+        <service
+            android:name=".notify.ParentWatchService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            tools:targetApi="34">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Ota-ona telefonida farzand qurilmasi holatini kuzatish va xabar berish (push xizmati ulanguncha vaqtinchalik)" />
+        </service>
+
+        <receiver
+            android:name=".notify.BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Faqat DNS so'rovlarini qabul qiladigan lokal VPN. Boshqa trafik tunnelga kirmaydi. -->
         <service

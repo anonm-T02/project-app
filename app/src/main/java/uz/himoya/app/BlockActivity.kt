@@ -9,6 +9,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import uz.himoya.app.sync.SyncStore
 import uz.himoya.app.ui.block.BlockScreen
 import uz.himoya.app.ui.theme.AppTheme
 import uz.himoya.app.vpn.BlockReason
@@ -25,10 +27,19 @@ class BlockActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        SyncStore.init(this)
         read(intent)
         setContent {
             AppTheme {
-                BlockScreen(reason = reason, domain = domain, detail = detail, onClose = { finish() })
+                val sync by SyncStore.state.collectAsStateWithLifecycle()
+                BlockScreen(
+                    reason = reason,
+                    domain = domain,
+                    detail = detail,
+                    // Ruxsat so'rash faqat ota-ona telefoniga bog'langan bo'lsa ko'rinadi.
+                    canRequest = sync.deviceToken != null,
+                    onClose = { finish() },
+                )
             }
         }
     }

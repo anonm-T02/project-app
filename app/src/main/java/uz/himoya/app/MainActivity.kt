@@ -22,6 +22,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import uz.himoya.app.guard.AppLock
 import uz.himoya.app.guard.PinStore
 import uz.himoya.app.guard.PrivateDnsCheck
+import uz.himoya.app.notify.ParentWatchService
 import uz.himoya.app.policy.PolicyRepo
 import uz.himoya.app.policy.TimeText
 import uz.himoya.app.ui.home.HomeScreen
@@ -42,6 +43,7 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var pinStore: PinStore
     private var privateDnsProvider by mutableStateOf<String?>(null)
+    private var askedParentNotifications = false
 
     /** Tizimning "VPN ulanishiga ruxsat" oynasi. */
     private val vpnConsent =
@@ -53,6 +55,12 @@ class MainActivity : ComponentActivity() {
     private val notificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
             askVpnConsent()
+        }
+
+    /** Ota-ona telefoni: xabarlar uchun bildirishnoma ruxsati. Rad etilsa ham ilova ishlaydi. */
+    private val parentNotificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+            ParentWatchService.start(this)
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -88,12 +96,18 @@ class MainActivity : ComponentActivity() {
 
                     // Bu telefon kimniki ekani hali tanlanmagan.
                     sync.role == null -> RoleScreen(
-                        onChoose = { role -> SyncStore.update { it.copy(role = role) } },
+                        onChoose = { role ->
+                            SyncStore.update { it.copy(role = role) }
+                            if (role == Role.PARENT) startParentWatch()
+                        },
                     )
 
                     // Ota-ona telefoni: bu yerda VPN ishlatilmaydi.
                     sync.role == Role.PARENT -> ParentApp(
-                        onSwitchRole = { SyncStore.update { it.copy(role = null) } },
+                        onSwitchRole = {
+                            SyncStore.update { it.copy(role = null) }
+                            ParentWatchService.stop(this@MainActivity)
+                        },
                     )
 
                     showSettings -> {
@@ -152,6 +166,21 @@ class MainActivity : ComponentActivity() {
         privateDnsProvider = PrivateDnsCheck.customProvider(this)
         // Ota-ona sozlamalardan qaytganda "Doim yoqiq VPN" holati yangilansin.
         if (VpnState.status.value == ProtectionStatus.ON) GuardVpnService.refresh(this)
+        if (SyncStore.current.role == Role.PARENT) startParentWatch()
+    }
+
+    /** Ota-ona telefonida fon kuzatuvini yoqadi; kerak bo'lsa avval bildirishnoma ruxsatini so'raydi. */
+    private fun startParentWatch() {
+        val needsPermission =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED
+        if (needsPermission && !askedParentNotifications) {
+            askedParentNotifications = true
+            parentNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            ParentWatchService.start(this)
+        }
     }
 
     override fun onStop() {
